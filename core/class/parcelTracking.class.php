@@ -75,8 +75,8 @@ class parcelTracking extends eqLogic {
     }
  
     public static function getConfigForCommunity() {
-    
-		$CommunityInfo = "```\n";
+
+                $CommunityInfo = "```\n";
         if ( !empty(config::byKey('apiKey', 'parcelTracking')) ) { $CommunityInfo = $CommunityInfo . 'API Key present' . "\n"; }
         else { $CommunityInfo = $CommunityInfo . 'API Key missing' . "\n"; }
         $CommunityInfo = $CommunityInfo . 'Quota : ' . config::byKey('quota', 'parcelTracking') . "\n";
@@ -88,13 +88,182 @@ class parcelTracking extends eqLogic {
         $CommunityInfo = $CommunityInfo . 'Notifications scenarioId : ' . config::byKey('scenarioNotifications', 'parcelTracking') . "\n";
         $CommunityInfo = $CommunityInfo . 'Notifications tags : ' . config::byKey('formatTags', 'parcelTracking') . "\n";
         $CommunityInfo = $CommunityInfo . 'Default widget : ' . config::byKey('defaultWidget', 'parcelTracking') . "\n";
-		$CommunityInfo = $CommunityInfo . "```";
-		return $CommunityInfo;
+                $CommunityInfo = $CommunityInfo . "```";
+                return $CommunityInfo;
+    }
+
+    private static function getCarrierListLocalPath()
+    {
+        return __DIR__ . '/../../data/apicarrier.all.json';
+    }
+
+    private static function getCarrierListRemoteUrl()
+    {
+        return 'https://res.17track.net/asset/carrier/info/apicarrier.all.json';
+    }
+
+    public static function getCarrierList()
+    {
+        $localPath = self::getCarrierListLocalPath();
+        $remoteUrl = self::getCarrierListRemoteUrl();
+        $cacheDuration = 24 * 60 * 60;
+
+        $carriers = self::readCarrierListFromFile($localPath);
+        $needsRefresh = true;
+
+        if (file_exists($localPath)) {
+            $needsRefresh = (time() - filemtime($localPath)) >= $cacheDuration;
+            if (!$needsRefresh && !empty($carriers)) {
+                return $carriers;
+            }
+        }
+
+        if ($needsRefresh) {
+            $remoteCarriers = self::downloadCarrierList($remoteUrl);
+            if (!empty($remoteCarriers)) {
+                self::persistCarrierList($localPath, $remoteCarriers);
+                return $remoteCarriers;
+            }
+        }
+
+        if (!empty($carriers)) {
+            return $carriers;
+        }
+
+        $remoteCarriers = self::downloadCarrierList($remoteUrl);
+        if (!empty($remoteCarriers)) {
+            self::persistCarrierList($localPath, $remoteCarriers);
+            return $remoteCarriers;
+        }
+
+        return array();
+    }
+
+    public static function refreshCarrierList()
+    {
+        $localPath = self::getCarrierListLocalPath();
+        $remoteUrl = self::getCarrierListRemoteUrl();
+
+        $remoteCarriers = self::downloadCarrierList($remoteUrl);
+        if (empty($remoteCarriers)) {
+            return array(
+                'error' => __('Impossible de télécharger la liste des transporteurs.', __FILE__),
+            );
+        }
+
+        self::persistCarrierList($localPath, $remoteCarriers);
+        clearstatcache(true, $localPath);
+
+        $fileTimestamp = @filemtime($localPath);
+        if ($fileTimestamp === false) {
+            $fileTimestamp = time();
+        }
+
+        $count = count($remoteCarriers);
+        log::add('parcelTracking', 'info', '| Carrier list refreshed (' . $count . ' entries)');
+
+        return array(
+            'message' => __('Liste des transporteurs mise à jour.', __FILE__),
+            'count' => $count,
+            'updatedAt' => date('Y-m-d H:i', $fileTimestamp),
+        );
+    }
+
+    private static function readCarrierListFromFile($path)
+    {
+        if (!is_readable($path)) {
+            return array();
+        }
+
+        $content = @file_get_contents($path);
+        if ($content === false) {
+            return array();
+        }
+
+        $decoded = json_decode($content, true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+            return array();
+        }
+
+        return $decoded;
+    }
+
+    private static function downloadCarrierList($url)
+    {
+        $content = self::fetchRemoteContent($url);
+        if ($content === false) {
+            log::add('parcelTracking', 'warning', '| Unable to download carrier list from ' . $url);
+            return array();
+        }
+
+        $decoded = json_decode($content, true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+            log::add('parcelTracking', 'warning', '| Invalid JSON received while updating carrier list');
+            return array();
+        }
+
+        return $decoded;
+    }
+
+    private static function persistCarrierList($path, array $carriers)
+    {
+        $json = json_encode($carriers, JSON_UNESCAPED_UNICODE);
+        if (@file_put_contents($path, $json, LOCK_EX) === false) {
+            log::add('parcelTracking', 'warning', '| Unable to persist carrier list to ' . $path);
+        }
+    }
+
+    private static function fetchRemoteContent($url)
+    {
+        $timeout = 15;
+
+        if (function_exists('curl_init')) {
+            $curl = curl_init($url);
+            curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, $timeout);
+            curl_setopt($curl, CURLOPT_TIMEOUT, $timeout);
+            curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($curl, CURLOPT_USERAGENT, 'parcelTracking plugin');
+            $content = curl_exec($curl);
+            $error = curl_error($curl);
+            $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            curl_close($curl);
+
+            if ($content === false || $httpCode < 200 || $httpCode >= 300) {
+                if (!empty($error)) {
+                    log::add('parcelTracking', 'warning', '| cURL error while downloading carrier list: ' . $error);
+                } else {
+                    log::add('parcelTracking', 'warning', '| Unexpected HTTP status while downloading carrier list: ' . $httpCode);
+                }
+                return false;
+            }
+
+            return $content;
+        }
+
+        $context = stream_context_create(array(
+            'http' => array(
+                'timeout' => $timeout,
+                'user_agent' => 'parcelTracking plugin',
+            ),
+            'https' => array(
+                'timeout' => $timeout,
+                'user_agent' => 'parcelTracking plugin',
+            ),
+        ));
+
+        $content = @file_get_contents($url, false, $context);
+        if ($content === false) {
+            log::add('parcelTracking', 'warning', '| Unable to download carrier list using file_get_contents');
+        }
+
+        return $content;
     }
 
     public static function getparcelTrackingEqLogic($trackingId) {
 
-		foreach ( eqLogic::byTypeAndSearhConfiguration('parcelTracking', 'trackingId') as $parcelTracking ) {
+                foreach ( eqLogic::byTypeAndSearhConfiguration('parcelTracking', 'trackingId') as $parcelTracking ) {
 			if ( $parcelTracking->getConfiguration('trackingId') == $trackingId ) {
 				$eqLogic = $parcelTracking;
 				break;

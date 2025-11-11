@@ -21,11 +21,30 @@ if (!isConnect()) {
     include_file('desktop', '404', 'php');
     die();
 }
+
+$carrierFile = dirname(__FILE__) . '/../data/apicarrier.all.json';
+$carrierCountDisplay = '--';
+$carrierUpdatedAtDisplay = __('Jamais', __FILE__);
+
+if (is_readable($carrierFile)) {
+    $carrierContent = @file_get_contents($carrierFile);
+    if ($carrierContent !== false) {
+        $carrierData = json_decode($carrierContent, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($carrierData)) {
+            $carrierCountDisplay = count($carrierData);
+        }
+    }
+
+    $carrierTimestamp = @filemtime($carrierFile);
+    if ($carrierTimestamp !== false) {
+        $carrierUpdatedAtDisplay = date('Y-m-d H:i', $carrierTimestamp);
+    }
+}
 ?>
 
 <form class="form-horizontal">
     <fieldset>
-    
+
     <legend><i class="fas fa-wrench"></i> {{Paramètres API Parcelsapp}}</legend>
 
     <div class="form-group">
@@ -48,6 +67,21 @@ if (!isConnect()) {
                     <a id="bt_getQuota" class="btn btn-warning"><i class="fas fa-check-square"></i></a>
                 </span>
             </div>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label class="col-sm-4 control-label">{{Liste des transporteurs}}
+            <sup><i class="fas fa-question-circle tooltips" title="{{Actualisez la liste locale des transporteurs depuis 17track}}"></i></sup>
+        </label>
+        <div class="col-sm-4">
+            <div class="input-group" style="margin-bottom:0px !important">
+                <input id="carrier_count" class="form-control" value="<?php echo htmlspecialchars($carrierCountDisplay, ENT_QUOTES, 'UTF-8'); ?>" readonly />
+                <span class="input-group-btn" title="{{Actualiser}}">
+                    <a id="bt_refreshCarriers" class="btn btn-default"><i class="fas fa-sync"></i></a>
+                </span>
+            </div>
+            <span class="help-block"><?php echo __('Dernière mise à jour', __FILE__); ?> : <span id="carrier_last_update"><?php echo htmlspecialchars($carrierUpdatedAtDisplay, ENT_QUOTES, 'UTF-8'); ?></span></span>
         </div>
     </div>
 
@@ -193,7 +227,7 @@ if (!isConnect()) {
     document.getElementById('bt_getQuota').addEventListener('click', function() {
         getQuota();
     });
-    
+
     function getQuota()  {
         
         $('#div_alert').showAlert({message: '{{Récupérations des informations}}', level: 'warning'});	
@@ -222,6 +256,46 @@ if (!isConnect()) {
                     }
                     else { $('#div_alert').showAlert({message: '{{Erreur lors de la récupération des informations}}', level: 'danger'}); }
                 }
+            }
+        });
+    };
+
+    var refreshCarriersButton = document.getElementById('bt_refreshCarriers');
+    if (refreshCarriersButton) {
+        refreshCarriersButton.addEventListener('click', function() {
+            refreshCarrierList();
+        });
+    }
+
+    function refreshCarrierList() {
+
+        $('#div_alert').showAlert({message: '{{Actualisation de la liste des transporteurs}}', level: 'warning'});
+        $.ajax({
+            type: "POST",
+            url: "plugins/parcelTracking/core/ajax/parcelTracking.ajax.php",
+            data: {
+                action: "refreshCarrierList",
+                },
+            dataType: 'json',
+                error: function (request, status, error) {
+                handleAjaxError(request, status, error);
+                },
+            success: function (data) {
+
+                if (data.state != 'ok') {
+                    $('#div_alert').showAlert({message: data.result, level: 'danger'});
+                    return;
+                }
+
+                var result = data.result || {};
+                if (typeof result.count !== 'undefined') {
+                    $('#carrier_count').val(result.count);
+                }
+                if (result.updatedAt) {
+                    $('#carrier_last_update').text(result.updatedAt);
+                }
+
+                $('#div_alert').showAlert({message: result.message || '{{Liste des transporteurs mise à jour}}', level: 'success'});
             }
         });
     };
