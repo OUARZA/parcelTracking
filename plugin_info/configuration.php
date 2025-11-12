@@ -37,7 +37,7 @@ if (is_readable($carrierFile)) {
 
     $carrierTimestamp = @filemtime($carrierFile);
     if ($carrierTimestamp !== false) {
-        $carrierUpdatedAtDisplay = date('Y-m-d H:i', $carrierTimestamp);
+        $carrierUpdatedAtDisplay = date('d-m-Y H:i', $carrierTimestamp);
     }
 }
 ?>
