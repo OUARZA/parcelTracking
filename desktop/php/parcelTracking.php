@@ -216,15 +216,28 @@ $eqLogics = eqLogic::byType($plugin->getId());
 										</div>
             							<select id="sel_carrier" class="eqLogicAttr form-control" style="margin: 0px 0px 1px 0px; " data-l1key="configuration" data-l2key="carrier">
 											<option value="">{{Aucun}}</option>
-											<?php
-												$json = file_get_contents('plugins/parcelTracking/data/apicarrier.all.json');
-												$carriers = json_decode($json, true);
+                                                                                        <?php
+                                                                                                require_once __DIR__ . '/../../core/class/parcelTracking.class.php';
+                                                                                                $carriers = parcelTracking::getCarrierList();
 
-												foreach($carriers as $carrier) {
-													echo '<option value="'.$carrier['key'].'">'.$carrier['_name'].' ('.$carrier['_country_iso'].')'.'</option>';
-												}
-											?>
-										</select>
+                                                                                                foreach ($carriers as $carrier) {
+                                                                                                        $value = isset($carrier['key']) ? htmlspecialchars((string) $carrier['key'], ENT_QUOTES, 'UTF-8') : '';
+                                                                                                        $labelParts = array_filter([
+                                                                                                                isset($carrier['_name']) ? $carrier['_name'] : '',
+                                                                                                                isset($carrier['_country_iso']) && $carrier['_country_iso'] !== '' ? '(' . $carrier['_country_iso'] . ')' : '',
+                                                                                                        ], function ($value) {
+                                                                                                                return $value !== '' && $value !== null;
+                                                                                                        });
+                                                                                                        $label = htmlspecialchars(trim(implode(' ', $labelParts)), ENT_QUOTES, 'UTF-8');
+
+                                                                                                        if ($value === '' || $label === '') {
+                                                                                                                continue;
+                                                                                                        }
+
+                                                                                                        echo '<option value="' . $value . '">' . $label . '</option>';
+                                                                                                }
+                                                                                        ?>
+                                                                                </select>
 										<span class="input-group-btn">
 											<a class="btn btn-warning cmdAction" id="bt_updateCarrier" style="z-index:5; height:64px;" title="{{Mettre à jour le transporteur<br/>ATTENTION ! Un premier enregistrement doit obligatoirement déjà avoir été effectué et réussi !}}"><i class="fa fa-pencil-alt" style="padding-top: 18px;"></i></a>
 										</span>

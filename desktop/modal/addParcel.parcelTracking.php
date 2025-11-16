@@ -43,14 +43,27 @@ $eqLogic = eqLogic::byId(init('eqLogic_id'));
 		</div>
 		<select id="carrier" class="eqLogicAttr form-control">
 			<option value="">{{Aucun transporteur}}</option>
-			<?php
-				$json = file_get_contents('plugins/parcelTracking/data/apicarrier.all.json');
-				$carriers = json_decode($json, true);
-				foreach($carriers as $carrier) {
-					echo '<option value="'.$carrier['key'].'">'.$carrier['_name'].' ('.$carrier['_country_iso'].')'.'</option>';
-				}
-			?>
-		</select>		
+                        <?php
+                                require_once __DIR__ . '/../../core/class/parcelTracking.class.php';
+                                $carriers = parcelTracking::getCarrierList();
+                                foreach ($carriers as $carrier) {
+                                        $value = isset($carrier['key']) ? htmlspecialchars((string) $carrier['key'], ENT_QUOTES, 'UTF-8') : '';
+                                        $labelParts = array_filter([
+                                                isset($carrier['_name']) ? $carrier['_name'] : '',
+                                                isset($carrier['_country_iso']) && $carrier['_country_iso'] !== '' ? '(' . $carrier['_country_iso'] . ')' : '',
+                                        ], function ($value) {
+                                                return $value !== '' && $value !== null;
+                                        });
+                                        $label = htmlspecialchars(trim(implode(' ', $labelParts)), ENT_QUOTES, 'UTF-8');
+
+                                        if ($value === '' || $label === '') {
+                                                continue;
+                                        }
+
+                                        echo '<option value="' . $value . '">' . $label . '</option>';
+                                }
+                        ?>
+                </select>
 	</div>
 	
 	<div class="col-sm-12" style="padding: 0px !important; margin-bottom: 5px;">

@@ -60,12 +60,20 @@ try {
 	}
 
     if (init('action') == 'getQuota') {
-		$result = parcelTracking::getQuota(init('apiKey'));
-		ajax::success($result);
-	}
+                $result = parcelTracking::getQuota(init('apiKey'));
+                ajax::success($result);
+        }
+
+    if (init('action') == 'refreshCarrierList') {
+        $result = parcelTracking::refreshCarrierList();
+        if (isset($result['error'])) {
+            ajax::error($result['error']);
+        }
+        ajax::success($result);
+    }
 
     if (init('action') == 'testNotifications') {
-		$cmdNotifications = init('cmdNotifications');
+                $cmdNotifications = init('cmdNotifications');
         $data = [
             'title' => 'Suivi Colis',
             'message' => 'Ceci est un test des notifications du plugin',
